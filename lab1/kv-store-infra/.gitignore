@@ -1,0 +1,10 @@
+# Terraform working files
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+.terraform.tfstate.lock.info
+
+# macOS
+.DS_Store
