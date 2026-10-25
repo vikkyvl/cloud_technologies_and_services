@@ -8,6 +8,7 @@ from app.dependencies import get_item_service
 from app.schemas import Item
 from app.services.items import ItemService
 
+# sort_key is null for simple tables, so it is hidden in responses
 router = APIRouter(prefix=ITEMS_PREFIX, tags=[TAG_ITEMS])
 
 
@@ -23,7 +24,7 @@ async def exists_item(table: str, key: str,
     return Response(status_code=code, headers=shard_header(service, key))
 
 
-@router.put("", status_code=status.HTTP_201_CREATED, response_model=Item)
+@router.put("", status_code=status.HTTP_201_CREATED, response_model=Item, response_model_exclude_none=True)
 async def create_item(table: str, key: str, response: Response, value: Any = Body(...),
                       service: ItemService = Depends(get_item_service)):
     item = await service.create(table, key, value)
@@ -31,7 +32,7 @@ async def create_item(table: str, key: str, response: Response, value: Any = Bod
     return item
 
 
-@router.get("", response_model=Item)
+@router.get("", response_model=Item, response_model_exclude_none=True)
 async def read_item(table: str, key: str, response: Response,
                     service: ItemService = Depends(get_item_service)):
     item = await service.read(table, key)
@@ -39,7 +40,7 @@ async def read_item(table: str, key: str, response: Response,
     return item
 
 
-@router.patch("", response_model=Item)
+@router.patch("", response_model=Item, response_model_exclude_none=True)
 async def update_item(table: str, key: str, response: Response, value: Any = Body(...),
                       service: ItemService = Depends(get_item_service)):
     item = await service.update(table, key, value)

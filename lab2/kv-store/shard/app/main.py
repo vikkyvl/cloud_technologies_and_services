@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from .api import debug, items
+from .api import composite, debug, items
 from .core.config import SHARD_ID
 from .core.constants import API_TITLE, API_VERSION
 from .services.registration import registration_loop
@@ -19,4 +19,5 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=f"{API_TITLE} {SHARD_ID}", version=API_VERSION, lifespan=lifespan)
 app.include_router(items.router)
+app.include_router(composite.router)
 app.include_router(debug.router)

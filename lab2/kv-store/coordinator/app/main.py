@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api import internal, items, tables
+from app.api import composite, internal, items, tables
 from app.core.constants import API_DESCRIPTION, API_TITLE, API_VERSION
 from app.dependencies import storage
 from app.exceptions import DomainError
@@ -25,6 +25,7 @@ app = FastAPI(
 
 app.include_router(tables.router)
 app.include_router(items.router)
+app.include_router(composite.router)
 app.include_router(internal.router)
 
 

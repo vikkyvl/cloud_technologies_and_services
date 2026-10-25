@@ -25,6 +25,9 @@ tags:
   - name: Items
     description: Operations on key-value records stored in registered tables
 
+  - name: Composite key
+    description: Operations on tables with a composite primary key (partition key + sort key)
+
   - name: Internal
     description: Internal operations for shard registration and cluster state
 
@@ -285,6 +288,191 @@ paths:
           $ref: '#/components/responses/NotFound'
 
 
+  /tables/{table}:
+    get:
+      tags:
+        - Tables
+      summary: Get a table definition
+      description: Returns the partition key and, if defined, the sort key of the table.
+      operationId: getTable
+      parameters:
+        - $ref: '#/components/parameters/Table'
+      responses:
+        '200':
+          description: Table definition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableDefinition'
+              example:
+                name: orders
+                partition_key: user_id
+                sort_key: order_date
+        '404':
+          $ref: '#/components/responses/TableNotFound'
+
+
+  /tables/{table}/items/{key}/{sort_key}:
+
+    parameters:
+      - $ref: '#/components/parameters/Table'
+      - $ref: '#/components/parameters/Key'
+      - $ref: '#/components/parameters/SortKey'
+
+    head:
+      tags:
+        - Composite key
+      summary: Check whether a record with a composite key exists
+      operationId: existsCompositeItem
+      responses:
+        '200':
+          description: Record exists
+          headers:
+            X-Shard:
+              $ref: '#/components/headers/X-Shard'
+        '404':
+          description: Table or record not found
+
+    put:
+      tags:
+        - Composite key
+      summary: Create a record with a composite key
+      description: |
+        The shard is chosen only by the partition key, so all records
+        of one partition are stored on the same shard.
+        If the record already exists, the operation returns 409 Conflict.
+      operationId: createCompositeItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Value'
+            example:
+              product: Laptop
+              total: 1200
+      responses:
+        '201':
+          description: Record successfully created
+          headers:
+            X-Shard:
+              $ref: '#/components/headers/X-Shard'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+              example:
+                key: alice
+                sort_key: 2026-10-01
+                value:
+                  product: Laptop
+                  total: 1200
+                shard: shard-0
+        '400':
+          $ref: '#/components/responses/WrongKeyShape'
+        '404':
+          $ref: '#/components/responses/TableNotFound'
+        '409':
+          $ref: '#/components/responses/KeyAlreadyExists'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    get:
+      tags:
+        - Composite key
+      summary: Read a record with a composite key
+      operationId: readCompositeItem
+      responses:
+        '200':
+          description: Record successfully retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        '400':
+          $ref: '#/components/responses/WrongKeyShape'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags:
+        - Composite key
+      summary: Update a record with a composite key
+      operationId: updateCompositeItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Value'
+      responses:
+        '200':
+          description: Record successfully updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        '400':
+          $ref: '#/components/responses/WrongKeyShape'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Composite key
+      summary: Delete a record with a composite key
+      operationId: deleteCompositeItem
+      responses:
+        '204':
+          description: Record successfully deleted
+        '400':
+          $ref: '#/components/responses/WrongKeyShape'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+
+  /tables/{table}/partitions/{key}:
+    get:
+      tags:
+        - Composite key
+      summary: Query a partition
+      description: |
+        Returns all records of one partition sorted by sort key.
+        The optional sk_from and sk_to parameters limit the range of sort keys (inclusive).
+      operationId: queryPartition
+      parameters:
+        - $ref: '#/components/parameters/Table'
+        - $ref: '#/components/parameters/Key'
+        - name: sk_from
+          in: query
+          required: false
+          description: Lowest sort key of the range
+          schema:
+            type: string
+          example: 2026-10-01
+        - name: sk_to
+          in: query
+          required: false
+          description: Highest sort key of the range
+          schema:
+            type: string
+          example: 2026-10-31
+      responses:
+        '200':
+          description: Records of the partition sorted by sort key
+          headers:
+            X-Shard:
+              $ref: '#/components/headers/X-Shard'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Partition'
+        '400':
+          $ref: '#/components/responses/WrongKeyShape'
+        '404':
+          $ref: '#/components/responses/TableNotFound'
+
+
   /internal/shards:
 
     post:
@@ -384,6 +572,17 @@ components:
       example: user1
 
 
+    SortKey:
+      name: sort_key
+      in: path
+      required: true
+      description: Value of the sort key that orders records inside a partition
+      schema:
+        type: string
+        minLength: 1
+      example: 2026-10-01
+
+
   headers:
 
     X-Shard:
@@ -421,6 +620,15 @@ components:
             to determine the target shard for a record.
           example: id
 
+        sort_key:
+          type: string
+          minLength: 1
+          description: |
+            Optional name of the sort key field.
+            If set, records are addressed by partition key and sort key,
+            and records of one partition are sorted by the sort key.
+          example: order_date
+
 
     Value:
       description: |
@@ -442,8 +650,13 @@ components:
         key:
           type: string
           minLength: 1
-          description: Record key
+          description: Record key (partition key value)
           example: user1
+
+        sort_key:
+          type: string
+          description: Sort key value, present only for tables with a sort key
+          example: 2026-10-01
 
         value:
           $ref: '#/components/schemas/Value'
@@ -457,6 +670,39 @@ components:
             This field is exposed primarily for observing
             and debugging sharding behavior.
           example: shard-1
+
+
+    PartitionItem:
+      type: object
+      required:
+        - sort_key
+        - value
+      properties:
+        sort_key:
+          type: string
+          example: 2026-10-01
+        value:
+          $ref: '#/components/schemas/Value'
+
+
+    Partition:
+      type: object
+      required:
+        - partition_key
+        - shard
+        - items
+      properties:
+        partition_key:
+          type: string
+          example: alice
+        shard:
+          type: string
+          example: shard-0
+        items:
+          type: array
+          description: Records sorted by sort key
+          items:
+            $ref: '#/components/schemas/PartitionItem'
 
 
     Shard:
@@ -593,6 +839,18 @@ components:
             $ref: '#/components/schemas/Error'
           example:
             detail: Table 'orders' is not registered
+
+
+    WrongKeyShape:
+      description: |
+        The key does not match the table definition: a sort key is missing
+        for a table with a sort key, or given for a table without it
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: Table 'orders' has a sort key, use /items/{key}/{sort_key}
 
 
     KeyAlreadyExists:

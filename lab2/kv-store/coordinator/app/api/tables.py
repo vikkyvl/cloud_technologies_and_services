@@ -9,7 +9,8 @@ from app.services.tables import TableRegistry
 router = APIRouter(prefix=TABLES_PREFIX, tags=[TAG_TABLES])
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=TableDefinition)
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=TableDefinition,
+             response_model_exclude_none=True)
 def create_table(definition: TableDefinition,
                  registry: TableRegistry = Depends(get_table_registry)):
     return registry.register(definition)
@@ -18,3 +19,8 @@ def create_table(definition: TableDefinition,
 @router.get("", response_model=dict[str, str])
 def list_tables(registry: TableRegistry = Depends(get_table_registry)):
     return registry.list()
+
+
+@router.get("/{table}", response_model=TableDefinition, response_model_exclude_none=True)
+def get_table(table: str, registry: TableRegistry = Depends(get_table_registry)):
+    return registry.get(table)
