@@ -25,3 +25,15 @@ services:
       - "8002:8000"
     depends_on:
       - coordinator
+
+  shard2:
+    build: ./shard
+    profiles: ["three"]
+    environment:
+      SHARD_ID: shard-2
+      SHARD_URL: http://shard2:8000
+      COORDINATOR_URL: http://coordinator:8000
+    ports:
+      - "8003:8000"
+    depends_on:
+      - coordinator

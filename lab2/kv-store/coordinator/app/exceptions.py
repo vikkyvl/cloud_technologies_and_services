@@ -5,6 +5,8 @@ from app.core.constants import (
     MSG_KEY_EXISTS,
     MSG_KEY_NOT_FOUND,
     MSG_SHARD_UNAVAILABLE,
+    MSG_SORT_KEY_NOT_SUPPORTED,
+    MSG_SORT_KEY_REQUIRED,
     MSG_TABLE_EXISTS,
     MSG_TABLE_NOT_FOUND,
 )
@@ -51,3 +53,17 @@ class ShardUnavailable(DomainError):
 
     def __init__(self, shard: str):
         super().__init__(MSG_SHARD_UNAVAILABLE.format(shard=shard))
+
+
+class SortKeyRequired(DomainError):
+    status_code = status.HTTP_400_BAD_REQUEST
+
+    def __init__(self, table: str):
+        super().__init__(MSG_SORT_KEY_REQUIRED.format(table=table))
+
+
+class SortKeyNotSupported(DomainError):
+    status_code = status.HTTP_400_BAD_REQUEST
+
+    def __init__(self, table: str):
+        super().__init__(MSG_SORT_KEY_NOT_SUPPORTED.format(table=table))
