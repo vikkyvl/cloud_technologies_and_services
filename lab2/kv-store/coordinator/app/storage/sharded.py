@@ -9,12 +9,14 @@ from app.exceptions import ShardUnavailable
 from app.schemas import Shard
 from app.services.shards import ShardRegistry
 from app.storage.base import Storage
-from app.storage.hashing import pick_shard
+from app.storage.hashing import ShardRouter
 
 
 class ShardedStorage(Storage):
-    def __init__(self, registry: ShardRegistry, fallback: Storage, timeout: float):
+    def __init__(self, registry: ShardRegistry, router: ShardRouter, fallback: Storage,
+                 timeout: float):
         self._registry = registry
+        self._router = router  # strategy of choosing a shard: hash % N or hash ring
         self._fallback = fallback  # used while no shard is registered (single-node mode)
         self._client = httpx.AsyncClient(timeout=timeout)
 
@@ -22,7 +24,7 @@ class ShardedStorage(Storage):
     def _shard_for(self, key: str) -> Shard | None:
         if self._registry.is_empty():
             return None
-        return pick_shard(key, self._registry.list())
+        return self._router.choose(key, self._registry.list())
 
     def locate(self, key: str) -> str:
         shard = self._shard_for(key)

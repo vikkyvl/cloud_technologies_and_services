@@ -34,3 +34,7 @@ MSG_TABLE_EXISTS = "Table '{table}' already exists"
 MSG_KEY_NOT_FOUND = "Key '{key}' not found"
 MSG_KEY_EXISTS = "Key '{key}' already exists"
 MSG_SHARD_UNAVAILABLE = "Shard '{shard}' is unavailable"
+
+# ---------- hashing strategies ----------
+STRATEGY_MODULO = "modulo"
+STRATEGY_RING = "ring"
