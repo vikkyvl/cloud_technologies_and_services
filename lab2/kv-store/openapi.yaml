@@ -1,0 +1,620 @@
+openapi: 3.0.3
+
+info:
+  title: Distributed KV Store API
+  version: 1.0.0
+  description: |
+    REST API for a distributed key-value storage system with sharding.
+
+    Clients communicate only with the coordinator.
+    The coordinator uses the record key to determine the target shard
+    and forwards the request to the appropriate storage node.
+
+    The API provides table registration, record existence checks,
+    CRUD operations for key-value records, and internal shard management.
+
+servers:
+  - url: http://localhost:8000
+    description: Local coordinator
+
+
+tags:
+  - name: Tables
+    description: Operations for registering and viewing table definitions
+
+  - name: Items
+    description: Operations on key-value records stored in registered tables
+
+  - name: Internal
+    description: Internal operations for shard registration and cluster state
+
+
+paths:
+
+  /tables:
+    post:
+      tags:
+        - Tables
+      summary: Register a table
+      description: |
+        Registers a new logical table and defines the field
+        used as its partition key.
+      operationId: createTable
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TableDefinition'
+            example:
+              name: users
+              partition_key: id
+
+      responses:
+        '201':
+          description: Table successfully registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableDefinition'
+              example:
+                name: users
+                partition_key: id
+
+        '409':
+          description: Table with the specified name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: Table 'users' already exists
+
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+
+    get:
+      tags:
+        - Tables
+      summary: List registered tables
+      description: |
+        Returns all registered logical tables
+        together with their partition key names.
+      operationId: listTables
+
+      responses:
+        '200':
+          description: Registered tables
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+              example:
+                users: id
+                orders: order_id
+
+
+  /tables/{table}/items/{key}:
+
+    parameters:
+      - $ref: '#/components/parameters/Table'
+      - $ref: '#/components/parameters/Key'
+
+
+    head:
+      tags:
+        - Items
+      summary: Check whether a record exists
+      description: |
+        Checks whether a record with the specified key exists.
+
+        Returns 200 if the record exists and 404 otherwise.
+        The operation does not return a response body.
+      operationId: existsItem
+
+      responses:
+        '200':
+          description: Record exists
+          headers:
+            X-Shard:
+              $ref: '#/components/headers/X-Shard'
+
+        '404':
+          description: Table or record not found
+          headers:
+            X-Shard:
+              $ref: '#/components/headers/X-Shard'
+
+
+    put:
+      tags:
+        - Items
+      summary: Create a record
+      description: |
+        Creates a new key-value record.
+
+        The coordinator determines the target shard from the key
+        and forwards the request to the corresponding storage node.
+
+        If the key already exists, the existing value is not overwritten
+        and the operation returns 409 Conflict.
+      operationId: createItem
+
+      requestBody:
+        required: true
+        description: JSON value associated with the specified key
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Value'
+            example:
+              name: Alice
+              age: 22
+
+      responses:
+        '201':
+          description: Record successfully created
+          headers:
+            X-Shard:
+              $ref: '#/components/headers/X-Shard'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+              example:
+                key: user1
+                value:
+                  name: Alice
+                  age: 22
+                shard: shard-1
+
+        '404':
+          $ref: '#/components/responses/TableNotFound'
+
+        '409':
+          $ref: '#/components/responses/KeyAlreadyExists'
+
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+
+    get:
+      tags:
+        - Items
+      summary: Read a record
+      description: |
+        Returns the value stored under the specified key.
+
+        The coordinator determines the target shard from the key
+        and forwards the read request to that shard.
+      operationId: readItem
+
+      responses:
+        '200':
+          description: Record successfully retrieved
+          headers:
+            X-Shard:
+              $ref: '#/components/headers/X-Shard'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+              example:
+                key: user1
+                value:
+                  name: Alice
+                  age: 22
+                shard: shard-1
+
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+
+    patch:
+      tags:
+        - Items
+      summary: Update a record
+      description: |
+        Replaces the stored value of an existing record
+        without changing its key.
+
+        Since the key does not change, the record remains mapped
+        to the same shard.
+
+        Returns 404 if the table or key does not exist.
+      operationId: updateItem
+
+      requestBody:
+        required: true
+        description: New JSON value for the existing key
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Value'
+            example:
+              name: Alice
+              age: 23
+
+      responses:
+        '200':
+          description: Record successfully updated
+          headers:
+            X-Shard:
+              $ref: '#/components/headers/X-Shard'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+              example:
+                key: user1
+                value:
+                  name: Alice
+                  age: 23
+                shard: shard-1
+
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+
+    delete:
+      tags:
+        - Items
+      summary: Delete a record
+      description: |
+        Removes the key-value record identified by the specified key.
+
+        The coordinator determines the target shard
+        and forwards the delete request to that shard.
+      operationId: deleteItem
+
+      responses:
+        '204':
+          description: Record successfully deleted
+          headers:
+            X-Shard:
+              $ref: '#/components/headers/X-Shard'
+
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+
+  /internal/shards:
+
+    post:
+      tags:
+        - Internal
+      summary: Register a shard
+      description: |
+        Registers a storage shard in the coordinator.
+
+        This endpoint is intended for internal service communication.
+        A shard calls it during startup to announce its identifier
+        and internal service URL.
+
+        If a shard with the same identifier is already registered,
+        its URL is updated.
+      operationId: registerShard
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Shard'
+            example:
+              id: shard-0
+              url: http://shard0:8000
+
+      responses:
+        '200':
+          description: Shard successfully registered or updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShardRegistration'
+              example:
+                status: registered
+                shards:
+                  - id: shard-0
+                    url: http://shard0:8000
+                  - id: shard-1
+                    url: http://shard1:8000
+
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+
+    get:
+      tags:
+        - Internal
+      summary: Get cluster state
+      description: |
+        Returns the current operating mode of the coordinator
+        and the list of registered storage shards.
+      operationId: listShards
+
+      responses:
+        '200':
+          description: Current cluster state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterState'
+              example:
+                mode: sharded
+                shards:
+                  - id: shard-0
+                    url: http://shard0:8000
+                  - id: shard-1
+                    url: http://shard1:8000
+
+
+components:
+
+  parameters:
+
+    Table:
+      name: table
+      in: path
+      required: true
+      description: Name of the registered logical table
+      schema:
+        type: string
+        minLength: 1
+      example: users
+
+
+    Key:
+      name: key
+      in: path
+      required: true
+      description: |
+        Value of the partition key used to identify the record
+        and determine the target shard.
+      schema:
+        type: string
+        minLength: 1
+      example: user1
+
+
+  headers:
+
+    X-Shard:
+      description: |
+        Identifier of the shard that processed the request.
+        The value is "local" when the system operates in single-node mode.
+      schema:
+        type: string
+      example: shard-1
+
+
+  schemas:
+
+    TableDefinition:
+      type: object
+      required:
+        - name
+        - partition_key
+
+      properties:
+
+        name:
+          type: string
+          minLength: 1
+          description: Unique name of the logical table
+          example: users
+
+        partition_key:
+          type: string
+          minLength: 1
+          description: |
+            Name of the field used as the partition key.
+
+            The value of this key is used by the coordinator
+            to determine the target shard for a record.
+          example: id
+
+
+    Value:
+      description: |
+        Arbitrary JSON value associated with a record key.
+
+        The storage system treats the value as application data.
+        Its internal structure does not affect shard selection.
+
+
+    Item:
+      type: object
+      required:
+        - key
+        - value
+        - shard
+
+      properties:
+
+        key:
+          type: string
+          minLength: 1
+          description: Record key
+          example: user1
+
+        value:
+          $ref: '#/components/schemas/Value'
+
+        shard:
+          type: string
+          description: |
+            Identifier of the shard that stores the record.
+            The value is "local" in single-node mode.
+
+            This field is exposed primarily for observing
+            and debugging sharding behavior.
+          example: shard-1
+
+
+    Shard:
+      type: object
+      required:
+        - id
+        - url
+
+      properties:
+
+        id:
+          type: string
+          minLength: 1
+          description: Unique identifier of the storage shard
+          example: shard-0
+
+        url:
+          type: string
+          format: uri
+          description: Internal URL of the shard service
+          example: http://shard0:8000
+
+
+    ShardRegistration:
+      type: object
+      required:
+        - status
+        - shards
+
+      properties:
+
+        status:
+          type: string
+          enum:
+            - registered
+            - updated
+          description: Result of the shard registration operation
+
+        shards:
+          type: array
+          description: Currently registered shards
+          items:
+            $ref: '#/components/schemas/Shard'
+
+
+    ClusterState:
+      type: object
+      required:
+        - mode
+        - shards
+
+      properties:
+
+        mode:
+          type: string
+          enum:
+            - single-node
+            - sharded
+          description: Current operating mode of the coordinator
+
+        shards:
+          type: array
+          description: Currently registered storage shards
+          items:
+            $ref: '#/components/schemas/Shard'
+
+
+    Error:
+      type: object
+      required:
+        - detail
+
+      properties:
+
+        detail:
+          type: string
+          description: Human-readable description of the error
+          example: Key not found
+
+
+    ValidationErrorDetail:
+      type: object
+      required:
+        - detail
+
+      properties:
+
+        detail:
+          type: array
+          description: Validation errors detected in the request
+          items:
+            type: object
+            required:
+              - loc
+              - msg
+              - type
+
+            properties:
+
+              loc:
+                type: array
+                description: Location of the invalid field
+                items:
+                  oneOf:
+                    - type: string
+                    - type: integer
+
+              msg:
+                type: string
+                description: Human-readable validation message
+
+              type:
+                type: string
+                description: Validation error type
+
+
+  responses:
+
+    NotFound:
+      description: Requested table or record was not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: Key 'user1' not found
+
+
+    TableNotFound:
+      description: Requested table is not registered
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: Table 'orders' is not registered
+
+
+    KeyAlreadyExists:
+      description: Record with the specified key already exists
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: Key 'user1' already exists
+
+
+    ValidationError:
+      description: Request data does not satisfy API validation rules
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorDetail'
+          example:
+            detail:
+              - loc:
+                  - body
+                  - name
+                msg: Field required
+                type: missing

@@ -1,0 +1,27 @@
+services:
+  coordinator:
+    build: ./coordinator
+    ports:
+      - "8000:8000"
+
+  shard0:
+    build: ./shard
+    environment:
+      SHARD_ID: shard-0
+      SHARD_URL: http://shard0:8000
+      COORDINATOR_URL: http://coordinator:8000
+    ports:
+      - "8001:8000"
+    depends_on:
+      - coordinator
+
+  shard1:
+    build: ./shard
+    environment:
+      SHARD_ID: shard-1
+      SHARD_URL: http://shard1:8000
+      COORDINATOR_URL: http://coordinator:8000
+    ports:
+      - "8002:8000"
+    depends_on:
+      - coordinator
