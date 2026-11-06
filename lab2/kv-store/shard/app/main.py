@@ -14,6 +14,7 @@ from .services.registration import registration_loop
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    log_follower.restore()
     await replication_log.start()
     log_follower.start()
     task = asyncio.create_task(registration_loop())

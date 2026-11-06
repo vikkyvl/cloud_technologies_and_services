@@ -7,6 +7,7 @@ from aiokafka.errors import KafkaError
 
 from ..storage.memory import InMemoryStorage
 from .replication import apply_event
+from .snapshot import SnapshotStore
 
 log = logging.getLogger("uvicorn.error")
 
@@ -16,13 +17,28 @@ def deserialize(raw: bytes) -> dict:
 
 
 class LogFollower:
-    def __init__(self, storage: InMemoryStorage, bootstrap: str, topic: str, retry_interval: float):
+    def __init__(self, storage: InMemoryStorage, snapshots: SnapshotStore, bootstrap: str,
+                 topic: str, retry_interval: float):
         self._storage = storage
+        self._snapshots = snapshots
         self._bootstrap = bootstrap
         self._partition = TopicPartition(topic, 0)
         self._retry_interval = retry_interval
         self._task: asyncio.Task | None = None
         self.applied_offset = -1
+        self.restored_offset: int | None = None
+
+    def restore(self) -> None:
+        snapshot = self._snapshots.load()
+        if snapshot is None:
+            log.info("No snapshot found, reading the log from the beginning")
+            return
+
+        self._storage.import_state(snapshot["state"])
+        self.applied_offset = snapshot["applied_offset"]
+        self.restored_offset = self.applied_offset
+        log.info("Restored snapshot at offset %d, resuming from offset %d",
+                 self.applied_offset, self.applied_offset + 1)
 
     def start(self) -> None:
         self._task = asyncio.create_task(self._run())
@@ -46,14 +62,29 @@ class LogFollower:
 
         try:
             consumer.assign([self._partition])
+            await self._check_log_end(consumer)
             consumer.seek(self._partition, self.applied_offset + 1)
 
             while True:
                 batch = await consumer.getmany(self._partition, timeout_ms=1000)
-                for record in batch.get(self._partition, []):
+                records = batch.get(self._partition, [])
+                for record in records:
                     await self._apply(record.offset, record.value)
+
+                if records:
+                    self._save_snapshot()
         finally:
             await consumer.stop()
+
+    async def _check_log_end(self, consumer: AIOKafkaConsumer) -> None:
+        end = (await consumer.end_offsets([self._partition]))[self._partition]
+        if self.applied_offset < end:
+            return
+
+        log.warning("Snapshot offset %d is beyond the log end %d, starting from scratch",
+                    self.applied_offset, end)
+        self._storage.clear()
+        self.applied_offset = -1
 
     async def _apply(self, offset: int, event: dict) -> None:
         if await apply_event(self._storage, event):
@@ -61,3 +92,7 @@ class LogFollower:
                      event["key"], event["version"])
 
         self.applied_offset = offset
+
+    def _save_snapshot(self) -> None:
+        snapshot = {"applied_offset": self.applied_offset, "state": self._storage.export_state()}
+        self._snapshots.save(snapshot)

@@ -14,6 +14,7 @@ def dump():
         "replica": REPLICA_ID,
         "role": replica_state.role,
         "applied_offset": log_follower.applied_offset,
+        "restored_offset": log_follower.restored_offset,
         "data": storage.dump(),
         "versions": storage.versions(),
     }

@@ -75,5 +75,21 @@ class InMemoryStorage(Storage):
         return {"/".join(part for part in slot if part is not None): version
                 for slot, version in sorted(self._versions.items(), key=lambda item: str(item[0]))}
 
+    def export_state(self) -> dict:
+        return {
+            "data": self._data,
+            "versions": [[table, key, sort_key, version]
+                         for (table, key, sort_key), version in self._versions.items()],
+        }
+
+    def import_state(self, state: dict) -> None:
+        self._data = state["data"]
+        self._versions = {(table, key, sort_key): version
+                          for table, key, sort_key, version in state["versions"]}
+
+    def clear(self) -> None:
+        self._data = {}
+        self._versions = {}
+
     def dump(self) -> dict[str, dict[str, Any]]:
         return {table: dict(records) for table, records in self._data.items()}

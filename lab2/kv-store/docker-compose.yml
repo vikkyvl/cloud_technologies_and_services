@@ -5,6 +5,8 @@ x-replica: &replica
       condition: service_started
     redpanda:
       condition: service_healthy
+  volumes:
+    - replica-state:/data
 
 services:
   redpanda:
@@ -84,3 +86,6 @@ services:
     profiles: ["three"]
     environment: {SHARD_ID: shard-2, REPLICA_ID: shard-2-r2, SHARD_URL: "http://shard2-r2:8000", COORDINATOR_URL: "http://coordinator:8000", KAFKA_BOOTSTRAP: "redpanda:9092"}
     ports: ["8023:8000"]
+
+volumes:
+  replica-state:
