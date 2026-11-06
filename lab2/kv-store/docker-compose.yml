@@ -39,6 +39,8 @@ services:
     build: ./coordinator
     environment:
       REPLICATION_FACTOR: "3"
+      WRITE_QUORUM: "2"
+      READ_QUORUM: "2"
     ports:
       - "8000:8000"
 

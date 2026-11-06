@@ -36,6 +36,7 @@ class ReplicationService:
         self._state = state
         self._shard_id = shard_id
         self._lock = asyncio.Lock()
+        self.last_offset = -1
 
     def _ensure_leader(self) -> None:
         if not self._state.is_leader:
@@ -80,5 +81,6 @@ class ReplicationService:
 
         offset = await self._log.append(event)
         await apply_event(self._storage, event)
+        self.last_offset = offset
 
         return {**event, "offset": offset}

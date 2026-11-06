@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from .api import composite, debug, items, log
+from .api import composite, debug, items, log, replication
 from .core.config import REPLICA_ID
 from .core.constants import API_TITLE, API_VERSION
 from .dependencies import log_follower, replication_log
@@ -29,6 +29,7 @@ app = FastAPI(title=f"{API_TITLE} {REPLICA_ID}", version=API_VERSION, lifespan=l
 app.include_router(items.router)
 app.include_router(composite.router)
 app.include_router(log.router)
+app.include_router(replication.router)
 app.include_router(debug.router)
 
 

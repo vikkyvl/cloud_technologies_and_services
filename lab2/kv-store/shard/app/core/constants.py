@@ -6,6 +6,11 @@ COMPOSITE_ITEMS_PREFIX = "/tables/{table}/items/{key}/{sort_key}"
 PARTITION_PREFIX = "/tables/{table}/partitions/{key}"
 REGISTER_PATH = "/internal/shards"
 LOG_PATH = "/log"
+REPLICATION_PREFIX = "/replication"
+
+HEADER_VERSION = "X-Version"
+HEADER_APPLIED_OFFSET = "X-Applied-Offset"
+HEADER_OFFSET = "X-Offset"
 
 TAG_ITEMS = "Items"
 TAG_DEBUG = "Debug"

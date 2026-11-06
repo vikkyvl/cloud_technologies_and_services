@@ -10,8 +10,15 @@ from app.core.constants import (
     STATUS_REGISTERED,
     TAG_INTERNAL,
 )
-from app.dependencies import get_shard_registry
-from app.schemas import ClusterState, ReplicaRegistration, ShardRegistration
+from app.dependencies import get_quorum, get_shard_registry
+from app.schemas import (
+    ClusterState,
+    QuorumConfig,
+    QuorumState,
+    ReplicaRegistration,
+    ShardRegistration,
+)
+from app.services.quorum import QuorumSettings
 from app.services.shards import ShardRegistry
 
 router = APIRouter(prefix=INTERNAL_PREFIX, tags=[TAG_INTERNAL])
@@ -37,3 +44,16 @@ def cluster_state(registry: ShardRegistry = Depends(get_shard_registry)):
     mode = MODE_SINGLE_NODE if registry.is_empty() else MODE_SHARDED
     return ClusterState(mode=mode, replication_factor=REPLICATION_FACTOR,
                         shards=registry.list())
+
+
+@router.get("/quorum", response_model=QuorumState)
+def read_quorum_settings(quorum: QuorumSettings = Depends(get_quorum)):
+    return quorum.state()
+
+
+@router.put("/quorum", response_model=QuorumState)
+def change_quorum_settings(config: QuorumConfig, quorum: QuorumSettings = Depends(get_quorum)):
+    quorum.change(config.write_quorum, config.read_quorum)
+    log.info("Quorum changed to W=%d, R=%d, N=%d", quorum.write_quorum, quorum.read_quorum,
+             quorum.replication_factor)
+    return quorum.state()

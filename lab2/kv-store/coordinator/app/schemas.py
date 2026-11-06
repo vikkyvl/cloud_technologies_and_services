@@ -63,3 +63,15 @@ class ClusterState(BaseModel):
     mode: str
     replication_factor: int
     shards: list[Shard]
+
+
+class QuorumConfig(BaseModel):
+    write_quorum: int = Field(ge=1, examples=[2])
+    read_quorum: int = Field(ge=1, examples=[2])
+
+
+class QuorumState(BaseModel):
+    replication_factor: int
+    write_quorum: int
+    read_quorum: int
+    consistent: bool

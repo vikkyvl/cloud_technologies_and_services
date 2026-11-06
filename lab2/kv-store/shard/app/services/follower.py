@@ -27,6 +27,7 @@ class LogFollower:
         self._task: asyncio.Task | None = None
         self.applied_offset = -1
         self.restored_offset: int | None = None
+        self.paused = False
 
     def restore(self) -> None:
         snapshot = self._snapshots.load()
@@ -66,6 +67,10 @@ class LogFollower:
             consumer.seek(self._partition, self.applied_offset + 1)
 
             while True:
+                if self.paused:
+                    await asyncio.sleep(0.2)
+                    continue
+
                 batch = await consumer.getmany(self._partition, timeout_ms=1000)
                 records = batch.get(self._partition, [])
                 for record in records:

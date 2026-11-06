@@ -2,11 +2,19 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Query, Response, status
 
-from app.core.constants import COMPOSITE_ITEMS_PREFIX, HEADER_REPLICA, HEADER_SHARD, PARTITION_PREFIX, TAG_COMPOSITE
+from app.core.constants import (
+    COMPOSITE_ITEMS_PREFIX,
+    HEADER_READ_REPLICAS,
+    HEADER_REPLICA,
+    HEADER_SHARD,
+    HEADER_WRITE_ACKS,
+    PARTITION_PREFIX,
+    TAG_COMPOSITE,
+)
 from app.dependencies import get_item_service
 from app.schemas import Item, Partition
 from app.services.items import ItemService
-from app.storage.sharded import served_replica
+from app.storage.sharded import read_replicas, served_replica, write_acks
 
 router = APIRouter(tags=[TAG_COMPOSITE])
 
@@ -14,9 +22,11 @@ router = APIRouter(tags=[TAG_COMPOSITE])
 def shard_header(service: ItemService, key: str) -> dict[str, str]:
     headers = {HEADER_SHARD: service.locate(key)}
 
-    replica = served_replica.get()
-    if replica is not None:
-        headers[HEADER_REPLICA] = replica
+    optional = ((HEADER_REPLICA, served_replica), (HEADER_READ_REPLICAS, read_replicas),
+                (HEADER_WRITE_ACKS, write_acks))
+    for header, source in optional:
+        if source.get() is not None:
+            headers[header] = source.get()
 
     return headers
 

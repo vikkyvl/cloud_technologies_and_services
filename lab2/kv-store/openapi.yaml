@@ -127,6 +127,10 @@ paths:
               $ref: '#/components/headers/X-Shard'
             X-Replica:
               $ref: '#/components/headers/X-Replica'
+            X-Read-Replicas:
+              $ref: '#/components/headers/X-Read-Replicas'
+            X-Write-Acks:
+              $ref: '#/components/headers/X-Write-Acks'
 
         '404':
           description: Table or record not found
@@ -135,6 +139,10 @@ paths:
               $ref: '#/components/headers/X-Shard'
             X-Replica:
               $ref: '#/components/headers/X-Replica'
+            X-Read-Replicas:
+              $ref: '#/components/headers/X-Read-Replicas'
+            X-Write-Acks:
+              $ref: '#/components/headers/X-Write-Acks'
 
 
     put:
@@ -170,6 +178,10 @@ paths:
               $ref: '#/components/headers/X-Shard'
             X-Replica:
               $ref: '#/components/headers/X-Replica'
+            X-Read-Replicas:
+              $ref: '#/components/headers/X-Read-Replicas'
+            X-Write-Acks:
+              $ref: '#/components/headers/X-Write-Acks'
           content:
             application/json:
               schema:
@@ -210,6 +222,10 @@ paths:
               $ref: '#/components/headers/X-Shard'
             X-Replica:
               $ref: '#/components/headers/X-Replica'
+            X-Read-Replicas:
+              $ref: '#/components/headers/X-Read-Replicas'
+            X-Write-Acks:
+              $ref: '#/components/headers/X-Write-Acks'
           content:
             application/json:
               schema:
@@ -258,6 +274,10 @@ paths:
               $ref: '#/components/headers/X-Shard'
             X-Replica:
               $ref: '#/components/headers/X-Replica'
+            X-Read-Replicas:
+              $ref: '#/components/headers/X-Read-Replicas'
+            X-Write-Acks:
+              $ref: '#/components/headers/X-Write-Acks'
           content:
             application/json:
               schema:
@@ -295,6 +315,10 @@ paths:
               $ref: '#/components/headers/X-Shard'
             X-Replica:
               $ref: '#/components/headers/X-Replica'
+            X-Read-Replicas:
+              $ref: '#/components/headers/X-Read-Replicas'
+            X-Write-Acks:
+              $ref: '#/components/headers/X-Write-Acks'
 
         '404':
           $ref: '#/components/responses/NotFound'
@@ -344,6 +368,10 @@ paths:
               $ref: '#/components/headers/X-Shard'
             X-Replica:
               $ref: '#/components/headers/X-Replica'
+            X-Read-Replicas:
+              $ref: '#/components/headers/X-Read-Replicas'
+            X-Write-Acks:
+              $ref: '#/components/headers/X-Write-Acks'
         '404':
           description: Table or record not found
 
@@ -373,6 +401,10 @@ paths:
               $ref: '#/components/headers/X-Shard'
             X-Replica:
               $ref: '#/components/headers/X-Replica'
+            X-Read-Replicas:
+              $ref: '#/components/headers/X-Read-Replicas'
+            X-Write-Acks:
+              $ref: '#/components/headers/X-Write-Acks'
           content:
             application/json:
               schema:
@@ -481,6 +513,10 @@ paths:
               $ref: '#/components/headers/X-Shard'
             X-Replica:
               $ref: '#/components/headers/X-Replica'
+            X-Read-Replicas:
+              $ref: '#/components/headers/X-Read-Replicas'
+            X-Write-Acks:
+              $ref: '#/components/headers/X-Write-Acks'
           content:
             application/json:
               schema:
@@ -595,6 +631,58 @@ paths:
                         alive: true
 
 
+
+  /internal/quorum:
+
+    get:
+      tags:
+        - Internal
+      summary: Get quorum settings
+      description: |
+        Returns N (replicas per shard), W (replicas that must apply a write)
+        and R (replicas asked on every read). The flag consistent is true
+        when R + W > N, so every read quorum overlaps every write quorum.
+      operationId: readQuorumSettings
+      responses:
+        '200':
+          description: Current quorum settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuorumState'
+
+    put:
+      tags:
+        - Internal
+      summary: Change quorum settings
+      description: |
+        Changes W and R at runtime. Both values must be between 1 and N.
+      operationId: changeQuorumSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuorumConfig'
+            example:
+              write_quorum: 2
+              read_quorum: 2
+      responses:
+        '200':
+          description: Settings changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuorumState'
+        '400':
+          description: Value out of range
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
 components:
 
   parameters:
@@ -653,6 +741,22 @@ components:
       schema:
         type: string
       example: shard-1-r2
+
+    X-Read-Replicas:
+      description: |
+        Replicas asked during a quorum read with the version of the key
+        each of them returned. The answer with the highest version wins.
+      schema:
+        type: string
+      example: shard-0-r1:6,shard-0-r2:5
+
+    X-Write-Acks:
+      description: |
+        Replicas that applied the write before the coordinator answered.
+        The leader is always the first one.
+      schema:
+        type: string
+      example: shard-0-r0,shard-0-r1
 
 
   schemas:
@@ -900,6 +1004,47 @@ components:
           description: Registered shards with their replicas
           items:
             $ref: '#/components/schemas/Shard'
+
+
+    QuorumConfig:
+      type: object
+      required:
+        - write_quorum
+        - read_quorum
+      properties:
+        write_quorum:
+          type: integer
+          minimum: 1
+          description: W, replicas that must apply a write
+          example: 2
+        read_quorum:
+          type: integer
+          minimum: 1
+          description: R, replicas asked on every read
+          example: 2
+
+
+    QuorumState:
+      type: object
+      required:
+        - replication_factor
+        - write_quorum
+        - read_quorum
+        - consistent
+      properties:
+        replication_factor:
+          type: integer
+          description: N, replicas per shard
+          example: 3
+        write_quorum:
+          type: integer
+          example: 2
+        read_quorum:
+          type: integer
+          example: 2
+        consistent:
+          type: boolean
+          description: True when R + W > N
 
 
     Error:
