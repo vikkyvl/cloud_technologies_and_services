@@ -1,13 +1,19 @@
-"""Debug endpoint: shows what is stored on this shard."""
 from fastapi import APIRouter
 
-from ..core.config import SHARD_ID
+from ..core.config import REPLICA_ID, SHARD_ID
 from ..core.constants import TAG_DEBUG
-from ..dependencies import storage
+from ..dependencies import log_follower, replica_state, storage
 
 router = APIRouter(tags=[TAG_DEBUG])
 
 
 @router.get("/dump")
 def dump():
-    return {"shard": SHARD_ID, "data": storage.dump()}
+    return {
+        "shard": SHARD_ID,
+        "replica": REPLICA_ID,
+        "role": replica_state.role,
+        "applied_offset": log_follower.applied_offset,
+        "data": storage.dump(),
+        "versions": storage.versions(),
+    }

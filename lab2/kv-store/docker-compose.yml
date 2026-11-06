@@ -1,39 +1,86 @@
+x-replica: &replica
+  build: ./shard
+  depends_on:
+    coordinator:
+      condition: service_started
+    redpanda:
+      condition: service_healthy
+
 services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=512M
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  console:
+    image: docker.redpanda.com/redpandadata/console:v2.7.2
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "8085:8080"
+    depends_on:
+      - redpanda
+
   coordinator:
     build: ./coordinator
+    environment:
+      REPLICATION_FACTOR: "3"
     ports:
       - "8000:8000"
 
-  shard0:
-    build: ./shard
-    environment:
-      SHARD_ID: shard-0
-      SHARD_URL: http://shard0:8000
-      COORDINATOR_URL: http://coordinator:8000
-    ports:
-      - "8001:8000"
-    depends_on:
-      - coordinator
 
-  shard1:
-    build: ./shard
-    environment:
-      SHARD_ID: shard-1
-      SHARD_URL: http://shard1:8000
-      COORDINATOR_URL: http://coordinator:8000
-    ports:
-      - "8002:8000"
-    depends_on:
-      - coordinator
+  shard0-r0:
+    <<: *replica
+    environment: {SHARD_ID: shard-0, REPLICA_ID: shard-0-r0, SHARD_URL: "http://shard0-r0:8000", COORDINATOR_URL: "http://coordinator:8000", KAFKA_BOOTSTRAP: "redpanda:9092"}
+    ports: ["8001:8000"]
+  shard0-r1:
+    <<: *replica
+    environment: {SHARD_ID: shard-0, REPLICA_ID: shard-0-r1, SHARD_URL: "http://shard0-r1:8000", COORDINATOR_URL: "http://coordinator:8000", KAFKA_BOOTSTRAP: "redpanda:9092"}
+    ports: ["8002:8000"]
+  shard0-r2:
+    <<: *replica
+    environment: {SHARD_ID: shard-0, REPLICA_ID: shard-0-r2, SHARD_URL: "http://shard0-r2:8000", COORDINATOR_URL: "http://coordinator:8000", KAFKA_BOOTSTRAP: "redpanda:9092"}
+    ports: ["8003:8000"]
 
-  shard2:
-    build: ./shard
+
+  shard1-r0:
+    <<: *replica
+    environment: {SHARD_ID: shard-1, REPLICA_ID: shard-1-r0, SHARD_URL: "http://shard1-r0:8000", COORDINATOR_URL: "http://coordinator:8000", KAFKA_BOOTSTRAP: "redpanda:9092"}
+    ports: ["8011:8000"]
+  shard1-r1:
+    <<: *replica
+    environment: {SHARD_ID: shard-1, REPLICA_ID: shard-1-r1, SHARD_URL: "http://shard1-r1:8000", COORDINATOR_URL: "http://coordinator:8000", KAFKA_BOOTSTRAP: "redpanda:9092"}
+    ports: ["8012:8000"]
+  shard1-r2:
+    <<: *replica
+    environment: {SHARD_ID: shard-1, REPLICA_ID: shard-1-r2, SHARD_URL: "http://shard1-r2:8000", COORDINATOR_URL: "http://coordinator:8000", KAFKA_BOOTSTRAP: "redpanda:9092"}
+    ports: ["8013:8000"]
+
+
+  shard2-r0:
+    <<: *replica
     profiles: ["three"]
-    environment:
-      SHARD_ID: shard-2
-      SHARD_URL: http://shard2:8000
-      COORDINATOR_URL: http://coordinator:8000
-    ports:
-      - "8003:8000"
-    depends_on:
-      - coordinator
+    environment: {SHARD_ID: shard-2, REPLICA_ID: shard-2-r0, SHARD_URL: "http://shard2-r0:8000", COORDINATOR_URL: "http://coordinator:8000", KAFKA_BOOTSTRAP: "redpanda:9092"}
+    ports: ["8021:8000"]
+  shard2-r1:
+    <<: *replica
+    profiles: ["three"]
+    environment: {SHARD_ID: shard-2, REPLICA_ID: shard-2-r1, SHARD_URL: "http://shard2-r1:8000", COORDINATOR_URL: "http://coordinator:8000", KAFKA_BOOTSTRAP: "redpanda:9092"}
+    ports: ["8022:8000"]
+  shard2-r2:
+    <<: *replica
+    profiles: ["three"]
+    environment: {SHARD_ID: shard-2, REPLICA_ID: shard-2-r2, SHARD_URL: "http://shard2-r2:8000", COORDINATOR_URL: "http://coordinator:8000", KAFKA_BOOTSTRAP: "redpanda:9092"}
+    ports: ["8023:8000"]

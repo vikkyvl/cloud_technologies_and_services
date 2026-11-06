@@ -1,18 +1,24 @@
-"""HTTP endpoints for tables with a composite primary key (partition key + sort key)."""
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Query, Response, status
 
-from app.core.constants import COMPOSITE_ITEMS_PREFIX, HEADER_SHARD, PARTITION_PREFIX, TAG_COMPOSITE
+from app.core.constants import COMPOSITE_ITEMS_PREFIX, HEADER_REPLICA, HEADER_SHARD, PARTITION_PREFIX, TAG_COMPOSITE
 from app.dependencies import get_item_service
 from app.schemas import Item, Partition
 from app.services.items import ItemService
+from app.storage.sharded import served_replica
 
 router = APIRouter(tags=[TAG_COMPOSITE])
 
 
 def shard_header(service: ItemService, key: str) -> dict[str, str]:
-    return {HEADER_SHARD: service.locate(key)}
+    headers = {HEADER_SHARD: service.locate(key)}
+
+    replica = served_replica.get()
+    if replica is not None:
+        headers[HEADER_REPLICA] = replica
+
+    return headers
 
 
 @router.head(COMPOSITE_ITEMS_PREFIX)
@@ -29,6 +35,7 @@ async def create_composite(table: str, key: str, sort_key: str, response: Respon
                            service: ItemService = Depends(get_item_service)):
     item = await service.create(table, key, value, sort_key)
     response.headers.update(shard_header(service, key))
+
     return item
 
 
@@ -37,6 +44,7 @@ async def read_composite(table: str, key: str, sort_key: str, response: Response
                          service: ItemService = Depends(get_item_service)):
     item = await service.read(table, key, sort_key)
     response.headers.update(shard_header(service, key))
+
     return item
 
 
@@ -46,6 +54,7 @@ async def update_composite(table: str, key: str, sort_key: str, response: Respon
                            service: ItemService = Depends(get_item_service)):
     item = await service.update(table, key, value, sort_key)
     response.headers.update(shard_header(service, key))
+
     return item
 
 
@@ -61,7 +70,7 @@ async def query_partition(table: str, key: str, response: Response,
                           sk_from: str | None = Query(None, description="Lowest sort key"),
                           sk_to: str | None = Query(None, description="Highest sort key"),
                           service: ItemService = Depends(get_item_service)):
-    """All records of one partition sorted by sort key (range is optional)."""
     partition = await service.query(table, key, sk_from, sk_to)
     response.headers.update(shard_header(service, key))
+
     return partition

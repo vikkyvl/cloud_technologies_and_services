@@ -1,4 +1,3 @@
-"""Entry point: builds the FastAPI application."""
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -13,7 +12,7 @@ from app.exceptions import DomainError
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
-    await storage.close()  # close HTTP connections to shards on shutdown
+    await storage.close()
 
 
 app = FastAPI(
@@ -31,5 +30,4 @@ app.include_router(internal.router)
 
 @app.exception_handler(DomainError)
 async def domain_error_handler(request: Request, exc: DomainError):
-    """Convert a domain error into an HTTP response {"detail": "..."}."""
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.message})

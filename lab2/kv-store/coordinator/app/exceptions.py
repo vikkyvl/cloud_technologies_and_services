@@ -1,9 +1,9 @@
-"""Domain errors. Services raise them, the API layer maps them to HTTP codes."""
 from fastapi import status
 
 from app.core.constants import (
     MSG_KEY_EXISTS,
     MSG_KEY_NOT_FOUND,
+    MSG_REPLICA_SET_FULL,
     MSG_SHARD_UNAVAILABLE,
     MSG_SORT_KEY_NOT_SUPPORTED,
     MSG_SORT_KEY_REQUIRED,
@@ -67,3 +67,10 @@ class SortKeyNotSupported(DomainError):
 
     def __init__(self, table: str):
         super().__init__(MSG_SORT_KEY_NOT_SUPPORTED.format(table=table))
+
+
+class ReplicaSetFull(DomainError):
+    status_code = status.HTTP_409_CONFLICT
+
+    def __init__(self, shard: str, count: int):
+        super().__init__(MSG_REPLICA_SET_FULL.format(shard=shard, count=count))

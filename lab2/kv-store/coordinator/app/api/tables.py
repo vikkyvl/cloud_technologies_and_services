@@ -1,4 +1,3 @@
-"""HTTP endpoints for tables."""
 from fastapi import APIRouter, Depends, status
 
 from app.core.constants import TABLES_PREFIX, TAG_TABLES

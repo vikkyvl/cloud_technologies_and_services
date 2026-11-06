@@ -125,12 +125,16 @@ paths:
           headers:
             X-Shard:
               $ref: '#/components/headers/X-Shard'
+            X-Replica:
+              $ref: '#/components/headers/X-Replica'
 
         '404':
           description: Table or record not found
           headers:
             X-Shard:
               $ref: '#/components/headers/X-Shard'
+            X-Replica:
+              $ref: '#/components/headers/X-Replica'
 
 
     put:
@@ -164,6 +168,8 @@ paths:
           headers:
             X-Shard:
               $ref: '#/components/headers/X-Shard'
+            X-Replica:
+              $ref: '#/components/headers/X-Replica'
           content:
             application/json:
               schema:
@@ -202,6 +208,8 @@ paths:
           headers:
             X-Shard:
               $ref: '#/components/headers/X-Shard'
+            X-Replica:
+              $ref: '#/components/headers/X-Replica'
           content:
             application/json:
               schema:
@@ -248,6 +256,8 @@ paths:
           headers:
             X-Shard:
               $ref: '#/components/headers/X-Shard'
+            X-Replica:
+              $ref: '#/components/headers/X-Replica'
           content:
             application/json:
               schema:
@@ -283,6 +293,8 @@ paths:
           headers:
             X-Shard:
               $ref: '#/components/headers/X-Shard'
+            X-Replica:
+              $ref: '#/components/headers/X-Replica'
 
         '404':
           $ref: '#/components/responses/NotFound'
@@ -330,6 +342,8 @@ paths:
           headers:
             X-Shard:
               $ref: '#/components/headers/X-Shard'
+            X-Replica:
+              $ref: '#/components/headers/X-Replica'
         '404':
           description: Table or record not found
 
@@ -357,6 +371,8 @@ paths:
           headers:
             X-Shard:
               $ref: '#/components/headers/X-Shard'
+            X-Replica:
+              $ref: '#/components/headers/X-Replica'
           content:
             application/json:
               schema:
@@ -463,6 +479,8 @@ paths:
           headers:
             X-Shard:
               $ref: '#/components/headers/X-Shard'
+            X-Replica:
+              $ref: '#/components/headers/X-Replica'
           content:
             application/json:
               schema:
@@ -478,42 +496,63 @@ paths:
     post:
       tags:
         - Internal
-      summary: Register a shard
+      summary: Register a replica
       description: |
-        Registers a storage shard in the coordinator.
+        Registers one replica of a storage shard in the coordinator.
 
-        This endpoint is intended for internal service communication.
-        A shard calls it during startup to announce its identifier
-        and internal service URL.
+        Every shard is a replica set of three replicas. A replica calls
+        this endpoint during startup and then periodically, sending the
+        id of its shard, its own id and its internal service URL.
 
-        If a shard with the same identifier is already registered,
-        its URL is updated.
-      operationId: registerShard
+        The replica with the smallest id becomes the leader of the shard,
+        the other two are followers. A shard takes part in routing only
+        when all three replicas are registered.
+
+        If the replica is already registered, its URL is updated.
+        A fourth replica of the same shard is rejected with 409.
+      operationId: registerReplica
 
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Shard'
+              $ref: '#/components/schemas/ReplicaRegistration'
             example:
-              id: shard-0
-              url: http://shard0:8000
+              shard_id: shard-0
+              replica_id: shard-0-r1
+              url: http://shard0-r1:8000
 
       responses:
         '200':
-          description: Shard successfully registered or updated
+          description: Replica successfully registered or updated
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ShardRegistration'
               example:
                 status: registered
-                shards:
-                  - id: shard-0
-                    url: http://shard0:8000
-                  - id: shard-1
-                    url: http://shard1:8000
+                shard:
+                  id: shard-0
+                  complete: false
+                  replicas:
+                    - id: shard-0-r0
+                      url: http://shard0-r0:8000
+                      role: leader
+                      alive: true
+                    - id: shard-0-r1
+                      url: http://shard0-r1:8000
+                      role: follower
+                      alive: true
+
+        '409':
+          description: The shard already has all its replicas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: Shard 'shard-0' already has 3 replicas
 
         '422':
           $ref: '#/components/responses/ValidationError'
@@ -524,8 +563,8 @@ paths:
         - Internal
       summary: Get cluster state
       description: |
-        Returns the current operating mode of the coordinator
-        and the list of registered storage shards.
+        Returns the current operating mode of the coordinator,
+        the replication factor and every shard with its replicas.
       operationId: listShards
 
       responses:
@@ -537,11 +576,23 @@ paths:
                 $ref: '#/components/schemas/ClusterState'
               example:
                 mode: sharded
+                replication_factor: 3
                 shards:
                   - id: shard-0
-                    url: http://shard0:8000
-                  - id: shard-1
-                    url: http://shard1:8000
+                    complete: true
+                    replicas:
+                      - id: shard-0-r0
+                        url: http://shard0-r0:8000
+                        role: leader
+                        alive: true
+                      - id: shard-0-r1
+                        url: http://shard0-r1:8000
+                        role: follower
+                        alive: true
+                      - id: shard-0-r2
+                        url: http://shard0-r2:8000
+                        role: follower
+                        alive: true
 
 
 components:
@@ -592,6 +643,16 @@ components:
       schema:
         type: string
       example: shard-1
+
+    X-Replica:
+      description: |
+        Identifier of the replica that served the request.
+        Writes are served by the leader of the shard, reads are
+        distributed round-robin between all alive replicas.
+        Absent in single-node mode.
+      schema:
+        type: string
+      example: shard-1-r2
 
 
   schemas:
@@ -705,32 +766,100 @@ components:
             $ref: '#/components/schemas/PartitionItem'
 
 
-    Shard:
+    ReplicaRegistration:
+      type: object
+      required:
+        - shard_id
+        - replica_id
+        - url
+
+      properties:
+
+        shard_id:
+          type: string
+          minLength: 1
+          description: Identifier of the shard (replica set) this replica belongs to
+          example: shard-0
+
+        replica_id:
+          type: string
+          minLength: 1
+          description: Unique identifier of the replica
+          example: shard-0-r1
+
+        url:
+          type: string
+          format: uri
+          description: Internal URL of the replica service
+          example: http://shard0-r1:8000
+
+
+    Replica:
       type: object
       required:
         - id
         - url
+        - role
+        - alive
 
       properties:
 
         id:
           type: string
-          minLength: 1
-          description: Unique identifier of the storage shard
-          example: shard-0
+          description: Unique identifier of the replica
+          example: shard-0-r0
 
         url:
           type: string
           format: uri
-          description: Internal URL of the shard service
-          example: http://shard0:8000
+          description: Internal URL of the replica service
+          example: http://shard0-r0:8000
+
+        role:
+          type: string
+          enum:
+            - leader
+            - follower
+          description: Role of the replica inside its shard
+
+        alive:
+          type: boolean
+          description: |
+            True when the replica registered within the last REPLICA_TTL
+            seconds and did not fail the last request. Only alive
+            replicas receive reads.
+
+
+    Shard:
+      type: object
+      required:
+        - id
+        - replicas
+        - complete
+
+      properties:
+
+        id:
+          type: string
+          description: Unique identifier of the shard
+          example: shard-0
+
+        replicas:
+          type: array
+          description: Replicas sorted by id, the first one is the leader
+          items:
+            $ref: '#/components/schemas/Replica'
+
+        complete:
+          type: boolean
+          description: True when all replicas of the shard are registered
 
 
     ShardRegistration:
       type: object
       required:
         - status
-        - shards
+        - shard
 
       properties:
 
@@ -739,19 +868,17 @@ components:
           enum:
             - registered
             - updated
-          description: Result of the shard registration operation
+          description: Result of the replica registration
 
-        shards:
-          type: array
-          description: Currently registered shards
-          items:
-            $ref: '#/components/schemas/Shard'
+        shard:
+          $ref: '#/components/schemas/Shard'
 
 
     ClusterState:
       type: object
       required:
         - mode
+        - replication_factor
         - shards
 
       properties:
@@ -763,9 +890,14 @@ components:
             - sharded
           description: Current operating mode of the coordinator
 
+        replication_factor:
+          type: integer
+          description: Number of replicas in every shard
+          example: 3
+
         shards:
           type: array
-          description: Currently registered storage shards
+          description: Registered shards with their replicas
           items:
             $ref: '#/components/schemas/Shard'
 

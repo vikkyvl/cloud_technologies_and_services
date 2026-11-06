@@ -1,19 +1,24 @@
-"""HTTP endpoints for records. Only HTTP details here, rules live in ItemService."""
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Response, status
 
-from app.core.constants import HEADER_SHARD, ITEMS_PREFIX, TAG_ITEMS
+from app.core.constants import HEADER_REPLICA, HEADER_SHARD, ITEMS_PREFIX, TAG_ITEMS
 from app.dependencies import get_item_service
 from app.schemas import Item
 from app.services.items import ItemService
+from app.storage.sharded import served_replica
 
-# sort_key is null for simple tables, so it is hidden in responses
 router = APIRouter(prefix=ITEMS_PREFIX, tags=[TAG_ITEMS])
 
 
 def shard_header(service: ItemService, key: str) -> dict[str, str]:
-    return {HEADER_SHARD: service.locate(key)}
+    headers = {HEADER_SHARD: service.locate(key)}
+
+    replica = served_replica.get()
+    if replica is not None:
+        headers[HEADER_REPLICA] = replica
+
+    return headers
 
 
 @router.head("")
@@ -29,6 +34,7 @@ async def create_item(table: str, key: str, response: Response, value: Any = Bod
                       service: ItemService = Depends(get_item_service)):
     item = await service.create(table, key, value)
     response.headers.update(shard_header(service, key))
+
     return item
 
 
@@ -37,6 +43,7 @@ async def read_item(table: str, key: str, response: Response,
                     service: ItemService = Depends(get_item_service)):
     item = await service.read(table, key)
     response.headers.update(shard_header(service, key))
+
     return item
 
 
@@ -45,6 +52,7 @@ async def update_item(table: str, key: str, response: Response, value: Any = Bod
                       service: ItemService = Depends(get_item_service)):
     item = await service.update(table, key, value)
     response.headers.update(shard_header(service, key))
+
     return item
 
 

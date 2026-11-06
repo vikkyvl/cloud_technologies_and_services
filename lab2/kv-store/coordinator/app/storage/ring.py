@@ -1,4 +1,3 @@
-"""Consistent hashing with virtual nodes."""
 import bisect
 
 from app.schemas import Shard
@@ -6,21 +5,19 @@ from app.storage.hashing import ShardRouter, hash_key
 
 
 class HashRing:
-    """Hash ring: every shard is placed on the ring as `vnodes` points.
-    A key belongs to the first point clockwise from the hash of the key."""
-
     def __init__(self, shard_ids: list[str], vnodes: int):
         points = sorted(
-            (hash_key(f"{shard_id}#{i}"), shard_id)
+            (hash_key(f"{shard_id}#{vnode}"), shard_id)
             for shard_id in shard_ids
-            for i in range(vnodes)
+            for vnode in range(vnodes)
         )
-        self._hashes = [h for h, _ in points]
+
+        self._hashes = [point_hash for point_hash, _ in points]
         self._owners = [shard_id for _, shard_id in points]
 
     def get(self, key: str) -> str:
-        i = bisect.bisect(self._hashes, hash_key(key)) % len(self._hashes)
-        return self._owners[i]
+        position = bisect.bisect(self._hashes, hash_key(key)) % len(self._hashes)
+        return self._owners[position]
 
 
 class ConsistentHashRouter(ShardRouter):
@@ -30,8 +27,9 @@ class ConsistentHashRouter(ShardRouter):
         self._ring: HashRing | None = None
 
     def choose(self, key: str, shards: list[Shard]) -> Shard:
-        ids = tuple(s.id for s in shards)
-        if ids != self._ids:  # rebuild the ring only when the set of shards changes
-            self._ids, self._ring = ids, HashRing(list(ids), self._vnodes)
+        shard_ids = tuple(shard.id for shard in shards)
+        if shard_ids != self._ids:
+            self._ids, self._ring = shard_ids, HashRing(list(shard_ids), self._vnodes)
+
         owner = self._ring.get(key)
-        return next(s for s in shards if s.id == owner)
+        return next(shard for shard in shards if shard.id == owner)
